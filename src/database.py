@@ -10,6 +10,8 @@ from pymysql.cursors import DictCursor
 
 from config.db_config import DB_CONFIG
 from src.scheduler import ReviewScheduler
+
+
 #
 # INIT_SQL = """
 #     CREATE DATABASE IF NOT EXISTS interview_trainer DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
@@ -109,6 +111,9 @@ class QuestionDB:
 
     def add_question(self, question, answer="", category="", difficulty="中等"):
         """添加新题目"""
+        valid_difficulties = ["简单", "中等", "困难"]
+        if difficulty not in valid_difficulties:
+            difficulty = "中等"  # 使用默认值
         try:
             cursor = self.conn.cursor()
             cursor.execute('''
@@ -223,9 +228,22 @@ class QuestionDB:
             print(f"获取统计信息失败：{str(e)}")
             return {}
 
+    def is_question_exists(self, question):
+        try:
+            cursor = self.conn.cursor(DictCursor)
+            cursor.execute('''
+            SELECT COUNT(*) AS cnt
+            FROM questions 
+            WHERE TRIM(LOWER(question)) = TRIM(LOWER(%s))
+            ''', (question,))
+            row = cursor.fetchone()
+            cnt = row['cnt'] if row else 0
+            return cnt > 0
+
+        except Exception as e:
+            # print(f"检查重复问题存在失败：{str(e)}")
+            return False
+
     def close(self):
         if self.conn:
             self.conn.close()
-
-
-

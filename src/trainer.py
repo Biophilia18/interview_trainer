@@ -42,6 +42,10 @@ class InterviewTrainer:
         """添加新题目"""
         return self.db.add_question(question, answer, category, difficulty)
 
+    def question_exists(self, question):
+        """检查题目是否已存在"""
+        return self.db.is_question_exists(question)
+
     def close(self):
         """关闭资源"""
         self.db.close()
