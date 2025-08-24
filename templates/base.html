@@ -3,24 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <title>面试题训练器</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <nav>
-        <a href="{{ url_for('index') }}">答题</a> |
-        <a href="{{ url_for('stats') }}">统计</a> |
-        <a href="{{ url_for('add_question') }}">添加题目</a> |
-        <a href="{{ url_for('import_csv') }}">导入CSV</a> |
-    </nav>
-    <hr>
+  <nav class="nav">
+    <a href="{{ url_for('index') }}" class="nav__link">答题</a>
+    <a href="{{ url_for('stats') }}" class="nav__link">统计</a>
+    <a href="{{ url_for('add_question') }}" class="nav__link">添加题目</a>
+    <a href="{{ url_for('import_csv') }}" class="nav__link">导入CSV</a>
+
+  </nav>
+
+  <main class="container">
     {% with messages = get_flashed_messages() %}
       {% if messages %}
-        <ul>
+        <ul class="flash">
           {% for msg in messages %}
-            <li>{{ msg }}</li>
+            <li class="flash__item">{{ msg }}</li>
           {% endfor %}
         </ul>
       {% endif %}
     {% endwith %}
-    {% block content %}{% endblock %}
+
+    <div class="card">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+
+  <footer class="footer">面试题训练器</footer>
 </body>
 </html>

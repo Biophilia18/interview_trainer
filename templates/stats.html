@@ -3,7 +3,7 @@
 <h2>学习统计</h2>
 <p>今日复习：{{ stats.today_reviews }} 题</p>
 <h3>掌握程度</h3>
-<ul>
+<ul class="stats__list">
 {% for level, count in stats.level_stats.items() %}
   <li>{{ level }} 星: {{ count }} 题</li>
 {% else %}
