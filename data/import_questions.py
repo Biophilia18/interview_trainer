@@ -10,7 +10,7 @@ import csv
 from src.trainer import InterviewTrainer
 
 
-def import_from_csv(file_path,mode='cli'):
+def import_from_csv(file_path, mode='cli'):
     """从csv文件导入题目"""
     trainer = InterviewTrainer()
     imported_cnt = 0
@@ -62,22 +62,22 @@ def import_from_csv(file_path,mode='cli'):
             if failed_rows:
                 for i, (line, error, data) in enumerate(failed_rows, 1):
                     print(f"#{i} 行：{line} | 错误类型：{error}")
-        else: # web
+        else:  # web
             return {
-            "imported": imported_cnt,
-            "skipped": skipped_cnt,
-            "failed": len(failed_rows),
-            "failed_details": failed_rows
-        }
+                "imported": imported_cnt,
+                "skipped": skipped_cnt,
+                "failed": len(failed_rows),
+                "failed_details": failed_rows
+            }
     except Exception as e:
         if mode == "cli":
             print(f"文件处理失败：{str(e)}")
         else:
-            return {"error":str(e)}
+            return {"error": str(e)}
     finally:
         trainer.close()
 
 
 if __name__ == '__main__':
     path = r"E:\FileMgr\questions.csv"
-    import_from_csv(path,mode="cli")
+    import_from_csv(path, mode="cli")
