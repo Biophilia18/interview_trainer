@@ -10,7 +10,7 @@ import csv
 from src.trainer import InterviewTrainer
 
 
-def import_from_csv(file_path):
+def import_from_csv(file_path,mode='cli'):
     """从csv文件导入题目"""
     trainer = InterviewTrainer()
     imported_cnt = 0
@@ -24,14 +24,15 @@ def import_from_csv(file_path):
                 total_rows += 1
             f.seek(0)  # 重置文件指针
             next(reader)  # 跳过标题行
-            print(f"开始导入csv文件，共检测到 {total_rows} 行数据...")
+            if mode == "cli":
+                print(f"开始导入，共 {total_rows} 行")
             for line_num, row in enumerate(reader, start=2):  # 行号从2开始
                 # 显示进度
 
                 print(f"处理中： 第 {line_num}/{total_rows + 1} 行... ")
 
                 if 'question' not in row:
-                    failed_rows.append((line_num, "缺少 'question' 字段", row))
+                    failed_rows.append((line_num, "缺少 'question' row", row))
                     continue
                 try:
                     # 导入题目
@@ -51,35 +52,32 @@ def import_from_csv(file_path):
                     # print(f"读取的题目信息：{difficulty}")
                     imported_cnt += 1
                 except Exception as e:
-                    errmsg = f"{type(e).__name__}: {str(e)}"
-                    failed_rows.append((line_num, errmsg, row))
-        print("\n" + '=' * 50)
-        print(f"成功导入 {imported_cnt} 道题目")
-        print(f"跳过重复 {skipped_cnt} 道题目")
-        print(f"导入失败 {len(failed_rows)} 行")
-        print('=' * 50)
-        if failed_rows:
-            print("\n失败明细：")
-            for i, (line_num, error, data) in enumerate(failed_rows, 1):
-                # 创建数据预览，只显示关键字段
-                preview = {k: (v[:20] + '...' if isinstance(v, str) and len(v) > 20 else v)
-                           for k, v in data.items() if k in ['question', 'category', 'difficulty']}
-
-                print(f"#{i} 行号：{line_num} | 错误类型：{error}")
-                print(f" 数据预览：{preview}")
+                    failed_rows.append((line_num, str(e), row))
+        if mode == "cli":
+            print("\n" + '=' * 50)
+            print(f"成功导入 {imported_cnt} 道题目")
+            print(f"跳过重复 {skipped_cnt} 道题目")
+            print(f"导入失败 {len(failed_rows)} 行")
+            print('=' * 50)
+            if failed_rows:
+                for i, (line, error, data) in enumerate(failed_rows, 1):
+                    print(f"#{i} 行：{line} | 错误类型：{error}")
+        else: # web
+            return {
+            "imported": imported_cnt,
+            "skipped": skipped_cnt,
+            "failed": len(failed_rows),
+            "failed_details": failed_rows
+        }
     except Exception as e:
-        print(f"文件处理失败：{str(e)}")
+        if mode == "cli":
+            print(f"文件处理失败：{str(e)}")
+        else:
+            return {"error":str(e)}
     finally:
         trainer.close()
 
 
 if __name__ == '__main__':
-    # import sys
-    #
-    # if len(sys.argv) != 2:
-    #     print(f"用法：python import_question.py <csv文件路径>")
-    #     sys.exit()
-    # csv_file = sys.argv[1]
-    # import_from_csv(csv_file)
     path = r"E:\FileMgr\questions.csv"
-    import_from_csv(path)
+    import_from_csv(path,mode="cli")
