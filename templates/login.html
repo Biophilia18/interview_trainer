@@ -1,0 +1,15 @@
+<!-- 文件: templates/login.html -->
+{% extends "base.html" %}
+{% block content %}
+<h2>登录</h2>
+<form action="{{ url_for('login', next=request.args.get('next')) }}" method="post">
+  <label>用户名</label>
+  <input type="text" name="username" required>
+  <label>密码</label>
+  <input type="password" name="password" required>
+  <div>
+    <button type="submit">登录</button>
+    <a class="button button--ghost" href="{{ url_for('register') }}">注册新账号</a>
+  </div>
+</form>
+{% endblock %}

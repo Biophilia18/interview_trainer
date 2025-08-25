@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>答题回顾</h2>
+<div>
+  <h3>题目</h3>
+  <pre>{{ rec.question }}</pre>
+
+  <h3>你的答案</h3>
+  <pre>{{ rec.user_answer }}</pre>
+
+  <h3>参考答案</h3>
+  <pre>{{ rec.answer }}</pre>
+
+  <p>评分: {{ rec.rating }} | 用时: {{ rec.duration_seconds or '未记录' }} 秒 | 提交时间: {{ rec.reviewed_at }}</p>
+
+  <a href="{{ url_for('index') }}">下一题</a>
+</div>
+{% endblock %}
