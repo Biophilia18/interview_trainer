@@ -21,9 +21,9 @@ class InterviewTrainer:
         """获取下一个练习题目"""
         return self.db.get_question_fro_review()
 
-    def submit_answer(self, question_id, user_answer, rating):
+    def submit_answer(self, question_id, user_answer, rating, user_id=None, duration_seconds=None):
         """提交答案并更新复习状态"""
-        record_id = self.db.save_review_record(question_id, user_answer, rating)
+        record_id = self.db.save_review_record(question_id, user_answer, rating, user_id=user_id,duration_seconds=duration_seconds)
         if record_id:
             self.session_records.append(record_id)
         return record_id
@@ -35,8 +35,8 @@ class InterviewTrainer:
             'session_record': self.session_records
         }
 
-    def get_overall_stats(self):
-        return self.db.get_review_status()
+    def get_overall_stats(self,user_id=None):
+        return self.db.get_review_status(user_id=user_id)
 
     def add_question(self, question, answer='', category='', difficulty='中等'):
         """添加新题目"""

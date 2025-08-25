@@ -10,38 +10,7 @@ from pymysql.cursors import DictCursor
 
 from config.db_config import DB_CONFIG
 from src.scheduler import ReviewScheduler
-
-
-#
-# INIT_SQL = """
-#     CREATE DATABASE IF NOT EXISTS interview_trainer DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
-#
-#     USE interview_trainer;
-#
-#     CREATE TABLE IF NOT EXISTS questions (
-#         id INT AUTO_INCREMENT PRIMARY KEY,
-#         question TEXT NOT NULL,
-#         answer TEXT,
-#         category VARCHAR(100),
-#         difficulty ENUM('简单','中等','困难'),
-#         level TINYINT DEFAULT 0 COMMENT ‘掌握程度(0-5)’,
-#         last_reviewed DATETIME,
-#         next_review DATETIME,
-#         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-#         INDEX idx_category (category),
-#         INDEX idx_difficulty (difficulty),
-#         INDEX idx_next_review (next_review)
-#     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-#
-#     CREATE TABLE IF NOT EXISTS review_records (
-#         id INT AUTO_INCREMENT PRIMARY KEY,
-#         question_id INT NOT NULL,
-#         user_answer TEXT,
-#         rating TINYINT COMMENT '用户自评掌握程度(1-5)',
-#         reviewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-#         FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
-#     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-# """
+from werkzeug.security import generate_password_hash, check_password_hash
 
 
 class QuestionDB:
@@ -97,7 +66,18 @@ class QuestionDB:
                         user_answer TEXT,
                         rating TINYINT COMMENT '用户自评掌握程度(1-5)',
                         reviewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
+                        user_id INT,
+                        FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE,
+                        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                    """)
+            # 5.创建user表
+            cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS users (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        username VARCHAR(150) NOT NULL UNIQUE,
+                        password_hash VARCHAR(255) NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                     """)
 
@@ -143,14 +123,14 @@ class QuestionDB:
             print(f"获取题目失败：{str(e)}")
             return None
 
-    def save_review_record(self, question_id, user_answer, rating):
-        """保存答题记录并更新题目状态"""
+    def save_review_record(self, question_id, user_answer, rating, user_id=None, duration_seconds=None):
+        """保存答题记录并更新题目状态,可指定user_id"""
         try:
             cursor = self.conn.cursor()
             cursor.execute('''
-            INSERT INTO review_records (question_id, user_answer, rating)
-            VALUES (%s, %s, %s)
-            ''', (question_id, user_answer, rating))
+            INSERT INTO review_records (question_id, user_answer, rating, user_id, duration_seconds)
+            VALUES (%s, %s, %s, %s, %s)
+            ''', (question_id, user_answer, rating, user_id, duration_seconds))
             # 更新题目复习状态
             self._update_question_level(question_id, rating)
             self.conn.commit()
@@ -184,7 +164,7 @@ class QuestionDB:
             print(f"更新题目状态失败：{str(e)}")
             raise
 
-    def get_review_status(self):
+    def get_review_status(self, user_id=None):
         """获取复习统计数据"""
         try:
             cursor = self.conn.cursor(DictCursor)
@@ -195,29 +175,79 @@ class QuestionDB:
             GROUP BY level
             ''')
             level_status = {row['level']: row['count'] for row in cursor.fetchall()}
-            # 今日复习数量
-            cursor.execute('''
-            SELECT COUNT(*) as count
-            FROM review_records
-            WHERE DATE(reviewed_at) = CURDATE()
-            ''')
-            today_count = cursor.fetchone()['count']
-            # 按分类统计
-            cursor.execute('''
-            SELECT q.category, COUNT(*) as count
-            FROM review_records r
-            JOIN questions q ON r.question_id = q.id
-            GROUP BY q.category
-            ''')
-            category_stats = {row['category']: row['count'] for row in cursor.fetchall()}
-            # 按难度统计
-            cursor.execute('''
-            SELECT q.difficulty, COUNT(*) as count
-            FROM review_records r
-            JOIN questions q ON r.question_id = q.id
-            GROUP BY q.difficulty
-            ''')
-            difficulty_stats = {row['difficulty']: row['count'] for row in cursor.fetchall()}
+            # 今日复习数量：如果 user_id 指定则按 user_id 过滤
+            if user_id:
+                cursor.execute('''
+                 SELECT COUNT(*) as count
+                 FROM review_records
+                 WHERE DATE(reviewed_at) = CURDATE() AND user_id = %s
+                 ''', (user_id,))
+                today_count = cursor.fetchone()['count']
+                # 总用时 （今日）
+                cursor.execute('''
+                    SELECT COALESCE(SUM(duration_seconds), 0) as total_seconds FROM review_records  WHERE DATE(reviewed_at)=CURDATE() AND user_id = %s
+                ''', (user_id,))
+                total_seconds_today = cursor.fetchone()['total_seconds']
+                # 平均用时
+                cursor.execute('''
+                    SELECT COALESCE(SUM(duration_seconds), 0) as avg_seconds FROM review_records  WHERE user_id = %s AND duration_seconds IS NOT NULL
+                ''', (user_id,))
+                avg_seconds = cursor.fetchone()['avg_seconds']
+                # 分类统计（仅该用户）
+                cursor.execute('''
+                 SELECT q.category, COUNT(*) as cnt, COALESCE(SUM(r.duration_seconds), 0) as total_sec,
+                 COALESCE(AVG(r.duration_seconds),0) as avg_sec
+                 FROM review_records r
+                 JOIN questions q ON r.question_id = q.id 
+                 WHERE r.user_id = %s
+                 GROUP BY q.category
+                 ''', (user_id,))
+                category_rows = cursor.fetchall()
+                category_stats = {row['category']: {'count': row['cnt'], 'total_seconds': row['total_sec'], 'avg_seconds': row['avg_sec']} for row in category_rows}
+                # 难度统计
+                cursor.execute('''
+                 SELECT q.difficulty, COUNT(*) as cnt, COALESCE(SUM(r.duration_seconds),0) as total_sec, 
+                 COALESCE(AVG(r.duration_seconds),0) as avg_sec
+                 FROM review_records r
+                 JOIN questions q ON r.question_id = q.id
+                 WHERE r.user_id = %s
+                 GROUP BY q.difficulty
+                 ''', (user_id,))
+                difficulty_rows = cursor.fetchall()
+                difficulty_stats = {row['difficulty']: {'count': row['cnt'], 'total_seconds': row['total_sec'], 'avg_seconds': row['avg_sec']} for row in difficulty_rows}
+                return {
+                    'level_stats':level_status,
+                    'today_reviews':today_count,
+                    'total_seconds_today': total_seconds_today,
+                    'avg_seconds': avg_seconds,
+                    'category_stats': category_stats,
+                    'difficulty_stats': difficulty_stats
+                }
+            else:
+                # 全站统计（原来的逻辑）
+                cursor.execute('''
+                 SELECT COUNT(*) as count
+                 FROM review_records
+                 WHERE DATE(reviewed_at) = CURDATE()
+                 ''')
+                today_count = cursor.fetchone()['count']
+
+                cursor.execute('''
+                 SELECT q.category, COUNT(*) as count
+                 FROM review_records r
+                 JOIN questions q ON r.question_id = q.id
+                 GROUP BY q.category
+                 ''')
+                category_stats = {row['category']: row['count'] for row in cursor.fetchall()}
+
+                cursor.execute('''
+                 SELECT q.difficulty, COUNT(*) as count
+                 FROM review_records r
+                 JOIN questions q ON r.question_id = q.id
+                 GROUP BY q.difficulty
+                 ''')
+                difficulty_stats = {row['difficulty']: row['count'] for row in cursor.fetchall()}
+
             return {
                 'level_stats': level_status,
                 'today_reviews': today_count,
@@ -243,6 +273,55 @@ class QuestionDB:
         except Exception as e:
             # print(f"检查重复问题存在失败：{str(e)}")
             return False
+
+    def create_user(self, username, password_plain):
+        """创建新用户，返回新用户id,若存在则返回None"""
+        try:
+            if self.get_user_by_name(username):
+                return None
+            pwd_hash = generate_password_hash(password_plain)
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                INSERT INTO users (username, password_hash)
+                VALUES (%s, %s)
+            """, (username, pwd_hash))
+            self.conn.commit()
+            return cursor.lastrowid
+        except Exception as e:
+            print(f"用户创建失败：{str(e)}")
+            self.conn.rollback()
+            return None
+
+    def get_user_by_name(self, username):
+        """按用户名查 user（返回 dict 或 None）"""
+        try:
+            cursor = self.conn.cursor(DictCursor)
+            cursor.execute("""
+                SELECT id, username, password_hash, created_at 
+                FROM users
+                WHERE username = %s
+            """,(username,))
+            return cursor.fetchone()
+        except Exception as e:
+            print(f"查询用户失败：{str(e)}")
+            return None
+
+    def verify_user(self, username, password_plain):
+        """验证用户名/密码。验证成功返回 user dict（不含 password），失败返回 None"""
+        try:
+            user = self.get_user_by_name(username)
+            if not user:
+                return None
+            if check_password_hash(user['password_hash'],password_plain):
+                return {
+                    'id': user['id'],
+                    'username': user['username'],
+                    'created_at': user['created_at']
+                }
+            return None
+        except Exception as e:
+            print(f"验证用户失败：{str(e)}")
+            return None
 
     def close(self):
         if self.conn:
