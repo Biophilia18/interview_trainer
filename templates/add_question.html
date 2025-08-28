@@ -2,18 +2,22 @@
 {% block content %}
 <h2>添加新题目</h2>
 <form action="{{ url_for('add_question') }}" method="post">
-  <label>问题：</label><br>
-  <textarea name="question" rows="3" cols="50" required></textarea><br>
-  <label>参考答案：</label><br>
-  <textarea name="answer" rows="3" cols="50"></textarea><br>
-  <label>分类：</label>
-  <input type="text" name="category"><br>
-  <label>难度：</label>
-  <select name="difficulty">
+  <label for="question">问题：</label>
+  <textarea id="question" name="question" rows="3" placeholder="请输入题目..." required></textarea>
+
+  <label for="answer">参考答案：</label>
+  <textarea id="answer" name="answer" rows="3" placeholder="参考答案（可选）"></textarea>
+
+  <label for="category">分类：</label>
+  <input id="category" type="text" name="category" placeholder="如：接口测试 / 测试流程">
+
+  <label for="difficulty">难度：</label>
+  <select id="difficulty" name="difficulty">
     <option value="简单">简单</option>
     <option value="中等" selected>中等</option>
     <option value="困难">困难</option>
-  </select><br>
+  </select>
+
   <button type="submit">添加</button>
 </form>
 {% endblock %}
