@@ -117,10 +117,7 @@ class InterviewTrainerGUI:
         default_font = ctk.CTkFont(family=family, size=15)
         # 全局标题字体
         self.title_font = ctk.CTkFont(family=family, size=20, weight="bold")
-        self.label_font = ctk.CTkFont(family=family, size=14)
-        self.button_font = ctk.CTkFont(family=family, size=14, weight="bold")
         self.textbox_font = ctk.CTkFont(family=family, size=16)
-        self.listbox_font = (family, 14)
 
         self.app.option_add("*Font", default_font)
 
@@ -312,14 +309,16 @@ class InterviewTrainerGUI:
         btn_frame = ctk.CTkFrame(ctrl)
         btn_frame.pack(side="right")
         self.pause_btn = ctk.CTkButton(btn_frame, text="暂停", command=self.toggle_pause, width=80,
-                                       font=self.textbox_font)
+                                       font=self.textbox_font, state="normal")
         self.pause_btn.pack(side="left", padx=6)
         self.submit_btn = ctk.CTkButton(btn_frame, text="提交", command=self.submit_answer, width=90,
-                                        font=self.textbox_font)
+                                        font=self.textbox_font, state="normal")
         self.submit_btn.pack(side="left", padx=6)
         self.next_btn = ctk.CTkButton(btn_frame, text="下一题", command=self.load_next_question, width=90,
                                       font=self.textbox_font)
         self.next_btn.pack(side="left", padx=6)
+        # 是否暂停标记位
+        self.is_paused = False
 
     def show_reference_answer(self):
         if not self.current_question:
@@ -343,7 +342,9 @@ class InterviewTrainerGUI:
         """从trainer获取下一题并显示，无题则提示"""
         try:
             # 停止当前问题的计时器
+            self.reset_timer_state()
             self.stop_timer()
+
             # 隐藏参考答案区域（如果有显示）
             if self.answer_frame.winfo_ismapped():
                 self.answer_frame.pack_forget()
@@ -398,6 +399,7 @@ class InterviewTrainerGUI:
         self.timer_job = self.app.after(1000, self._tick_timer)
 
     def stop_timer(self):
+        self.timer_running = False  # 先设置状态，防止回调继续
         if self.timer_job:
             try:
                 self.app.after_cancel(self.timer_job)
@@ -412,18 +414,33 @@ class InterviewTrainerGUI:
         self.timer_label.configure(text="用时：0s")
 
     def toggle_pause(self):
+        """切换暂停/继续状态 """
         if self.timer_running:
             self.stop_timer()
             self.pause_btn.configure(text="继续")
+            self.is_paused = True
+            # 禁用提交按钮
+            self.submit_btn.configure(state="disabled")
+            # 显示提示信息
+            messagebox.showinfo("已暂停", "答题已暂停，请点击'继续'按钮恢复答题")
         else:
             self.start_timer()
             self.pause_btn.configure(text="暂停")
+            self.is_paused = False
+
+            # 启用提交按钮 - 确保在UI线程中执行
+            self.app.after(100, lambda: self.submit_btn.configure(state="normal"))
 
     def submit_answer(self):
         """读取用户答案与评分，提交给 trainer，保存记录并跳转下一题"""
+        if self.is_paused:
+            messagebox.showwarning("无法提交", "请先点击'继续'按钮恢复答题后再提交")
+            return
         if not self.current_question:
             messagebox.showwarning("无题", "当前没有题目可以提交")
             return
+        # 停止当前计时
+        self.stop_timer()
         answer = self.answer_textbox.get("1.0", "end").strip()
         try:
             rating = int(self.rating_var.get())
@@ -439,13 +456,20 @@ class InterviewTrainerGUI:
             )
             if record_id:
                 logger.info(f"已提交记录 id={record_id}")
-                messagebox.showinfo("提交成功", "答案提交成功，进入下一题。")
+                # messagebox.showinfo("提交成功", "答案提交成功，进入下一题。")
+                self.reset_timer_state()
                 self.load_next_question()
             else:
                 messagebox.showerror("提交失败", "提交未成功（请检查数据库或日志）")
         except Exception as e:
             logger.exception("提交异常")
             messagebox.showerror("提交失败", f"提交异常：{str(e)}")
+
+    def reset_timer_state(self):
+        self.is_paused = False
+        self.pause_btn.configure(text="暂停")
+        # 确保提交按钮状态正确
+        self.app.after(100, lambda: self.submit_btn.configure(state="normal"))
 
     # --------------------
     # 回顾 Tab（查看历史答题记录）
@@ -590,7 +614,11 @@ class InterviewTrainerGUI:
             lines = []
             lines.append(f"总答题数：{total_reviews} 题")
             lines.append(f"平均评分：{avg_rating:.2f}")
-            lines.append(f"总计用时：{int(total_seconds)} 秒")
+            h = int(total_seconds) // 3600
+            m = int(total_seconds) % 3600 // 60
+            s = int(total_seconds) % 60
+            # lines.append(f"总计用时：{int(total_seconds)} 秒")
+            lines.append(f"总计用时：{h} 时 {m} 分 {s} 秒")
             lines.append("\n按分类统计：")
             for cat, data in category_stats.items():
                 if isinstance(data, dict):
@@ -645,7 +673,7 @@ class InterviewTrainerGUI:
                                                                                                            padx=6)
 
         # 题目列表
-        self.q_listbox = tk.Listbox(tab, font=self.listbox_font)
+        self.q_listbox = tk.Listbox(tab, font=self.textbox_font)
         self.q_listbox.pack(fill="both", expand=True, padx=8, pady=8)
         self.q_listbox.bind("<<ListboxSelect>>", self.on_question_select)
 
@@ -769,7 +797,7 @@ class InterviewTrainerGUI:
         frm = ctk.CTkFrame(tab)
         frm.pack(fill="both", expand=True, padx=12, pady=12)
 
-        ctk.CTkLabel(frm, text="个人设置", font=self.listbox_font).pack(anchor="w", pady=(6, 8))
+        ctk.CTkLabel(frm, text="个人设置", font=self.textbox_font).pack(anchor="w", pady=(6, 8))
         # 主题选择
         ctk.CTkLabel(frm, text="主题：", font=self.textbox_font).pack(anchor="w")
         self.theme_var = tk.StringVar(value="Light")
@@ -924,7 +952,7 @@ class InterviewTrainerGUI:
                 if hasattr(self, 'trainer') and self.trainer:
                     self.trainer.close()
                     self._db_closed = True  # 设置标记避免重复
-            except Exception:
+            except Exception as e:
                 logger.exception(f"关闭数据库出错：{e}")
             finally:
                 self.app.destroy()

@@ -2,3 +2,8 @@
 /config/.gitignore
 /src/.gitignore
 .idea
+code.txt
+logs/
+maingui.txt
+prefs_2.json
+session.json
