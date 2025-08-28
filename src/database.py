@@ -168,6 +168,7 @@ class QuestionDB:
         """获取复习统计数据"""
         try:
             cursor = self.conn.cursor(DictCursor)
+
             # 各级别题目数量
             cursor.execute('''
             SELECT level, COUNT(*) as count
@@ -175,85 +176,137 @@ class QuestionDB:
             GROUP BY level
             ''')
             level_status = {row['level']: row['count'] for row in cursor.fetchall()}
-            # 今日复习数量：如果 user_id 指定则按 user_id 过滤
+
             if user_id:
+                # 今日复习数
                 cursor.execute('''
-                 SELECT COUNT(*) as count
-                 FROM review_records
-                 WHERE DATE(reviewed_at) = CURDATE() AND user_id = %s
-                 ''', (user_id,))
+                    SELECT COUNT(*) as count
+                    FROM review_records
+                    WHERE DATE(reviewed_at) = CURDATE() AND user_id = %s
+                ''', (user_id,))
                 today_count = cursor.fetchone()['count']
-                # 总用时 （今日）
+
+                # 总答题数
                 cursor.execute('''
-                    SELECT COALESCE(SUM(duration_seconds), 0) as total_seconds FROM review_records  WHERE DATE(reviewed_at)=CURDATE() AND user_id = %s
+                    SELECT COUNT(*) as cnt FROM review_records WHERE user_id = %s
                 ''', (user_id,))
-                total_seconds_today = cursor.fetchone()['total_seconds']
-                # 平均用时
+                total_reviews = cursor.fetchone()['cnt']
+
+                # 总用时 & 平均用时
                 cursor.execute('''
-                    SELECT COALESCE(SUM(duration_seconds), 0) as avg_seconds FROM review_records  WHERE user_id = %s AND duration_seconds IS NOT NULL
+                    SELECT COALESCE(SUM(duration_seconds), 0) as total_seconds,
+                           COALESCE(AVG(duration_seconds), 0) as avg_seconds
+                    FROM review_records
+                    WHERE user_id = %s
                 ''', (user_id,))
-                avg_seconds = cursor.fetchone()['avg_seconds']
-                # 分类统计（仅该用户）
+                row = cursor.fetchone()
+                total_seconds_all = row['total_seconds']
+                avg_seconds = row['avg_seconds']
+
+                # 平均评分
+                cursor.execute('''
+                    SELECT COALESCE(AVG(rating), 0) as avg_rating
+                    FROM review_records
+                    WHERE user_id = %s
+                ''', (user_id,))
+                avg_rating = cursor.fetchone()['avg_rating']
+
+                # 分类统计
                 cursor.execute('''
                  SELECT q.category, COUNT(*) as cnt, COALESCE(SUM(r.duration_seconds), 0) as total_sec,
-                 COALESCE(AVG(r.duration_seconds),0) as avg_sec
+                        COALESCE(AVG(r.duration_seconds),0) as avg_sec
                  FROM review_records r
                  JOIN questions q ON r.question_id = q.id 
                  WHERE r.user_id = %s
                  GROUP BY q.category
-                 ''', (user_id,))
+                ''', (user_id,))
                 category_rows = cursor.fetchall()
-                category_stats = {row['category']: {'count': row['cnt'], 'total_seconds': row['total_sec'], 'avg_seconds': row['avg_sec']} for row in category_rows}
+                category_stats = {
+                    row['category']: {
+                        'count': row['cnt'],
+                        'total_seconds': row['total_sec'],
+                        'avg_seconds': row['avg_sec']
+                    } for row in category_rows
+                }
+
                 # 难度统计
                 cursor.execute('''
                  SELECT q.difficulty, COUNT(*) as cnt, COALESCE(SUM(r.duration_seconds),0) as total_sec, 
-                 COALESCE(AVG(r.duration_seconds),0) as avg_sec
+                        COALESCE(AVG(r.duration_seconds),0) as avg_sec
                  FROM review_records r
                  JOIN questions q ON r.question_id = q.id
                  WHERE r.user_id = %s
                  GROUP BY q.difficulty
-                 ''', (user_id,))
+                ''', (user_id,))
                 difficulty_rows = cursor.fetchall()
-                difficulty_stats = {row['difficulty']: {'count': row['cnt'], 'total_seconds': row['total_sec'], 'avg_seconds': row['avg_sec']} for row in difficulty_rows}
+                difficulty_stats = {
+                    row['difficulty']: {
+                        'count': row['cnt'],
+                        'total_seconds': row['total_sec'],
+                        'avg_seconds': row['avg_sec']
+                    } for row in difficulty_rows
+                }
+
                 return {
-                    'level_stats':level_status,
-                    'today_reviews':today_count,
-                    'total_seconds_today': total_seconds_today,
+                    'level_stats': level_status,
+                    'today_reviews': today_count,
+                    'total_reviews': total_reviews,
+                    'total_seconds_all': total_seconds_all,
                     'avg_seconds': avg_seconds,
+                    'avg_rating': avg_rating,
                     'category_stats': category_stats,
                     'difficulty_stats': difficulty_stats
                 }
+
             else:
-                # 全站统计（原来的逻辑）
+                # 全部用户的统计（可以按需精简）
                 cursor.execute('''
-                 SELECT COUNT(*) as count
-                 FROM review_records
-                 WHERE DATE(reviewed_at) = CURDATE()
-                 ''')
+                    SELECT COUNT(*) as count
+                    FROM review_records
+                    WHERE DATE(reviewed_at) = CURDATE()
+                ''')
                 today_count = cursor.fetchone()['count']
 
                 cursor.execute('''
-                 SELECT q.category, COUNT(*) as count
-                 FROM review_records r
-                 JOIN questions q ON r.question_id = q.id
-                 GROUP BY q.category
-                 ''')
+                    SELECT COUNT(*) as cnt,
+                           COALESCE(SUM(duration_seconds),0) as total_seconds,
+                           COALESCE(AVG(duration_seconds),0) as avg_seconds,
+                           COALESCE(AVG(rating),0) as avg_rating
+                    FROM review_records
+                ''')
+                row = cursor.fetchone()
+                total_reviews = row['cnt']
+                total_seconds_all = row['total_seconds']
+                avg_seconds = row['avg_seconds']
+                avg_rating = row['avg_rating']
+
+                cursor.execute('''
+                    SELECT q.category, COUNT(*) as count
+                    FROM review_records r
+                    JOIN questions q ON r.question_id = q.id
+                    GROUP BY q.category
+                ''')
                 category_stats = {row['category']: row['count'] for row in cursor.fetchall()}
 
                 cursor.execute('''
-                 SELECT q.difficulty, COUNT(*) as count
-                 FROM review_records r
-                 JOIN questions q ON r.question_id = q.id
-                 GROUP BY q.difficulty
-                 ''')
+                    SELECT q.difficulty, COUNT(*) as count
+                    FROM review_records r
+                    JOIN questions q ON r.question_id = q.id
+                    GROUP BY q.difficulty
+                ''')
                 difficulty_stats = {row['difficulty']: row['count'] for row in cursor.fetchall()}
 
-            return {
-                'level_stats': level_status,
-                'today_reviews': today_count,
-                'category_stats': category_stats,
-                'difficulty_stats': difficulty_stats
-            }
+                return {
+                    'level_stats': level_status,
+                    'today_reviews': today_count,
+                    'total_reviews': total_reviews,
+                    'total_seconds_all': total_seconds_all,
+                    'avg_seconds': avg_seconds,
+                    'avg_rating': avg_rating,
+                    'category_stats': category_stats,
+                    'difficulty_stats': difficulty_stats
+                }
+
         except Exception as e:
             print(f"获取统计信息失败：{str(e)}")
             return {}
