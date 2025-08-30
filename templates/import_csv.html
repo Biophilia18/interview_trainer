@@ -1,8 +1,0 @@
-{% extends "base.html" %}
-{% block content %}
-<h2>导入CSV</h2>
-<form action="{{ url_for('import_csv') }}" method="post" enctype="multipart/form-data">
-  <input type="file" name="file" accept=".csv" required>
-  <button type="submit">上传并导入</button>
-</form>
-{% endblock %}
