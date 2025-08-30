@@ -5,5 +5,7 @@
 code.txt
 logs/
 maingui.txt
+dist
+build
+InterviewTrainer.spec
 prefs_2.json
-session.json

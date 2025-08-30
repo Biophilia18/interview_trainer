@@ -122,7 +122,7 @@ class InterviewTrainerGUI:
         self.app.option_add("*Font", default_font)
 
         # 主题（推荐 dark + blue）
-        ctk.set_appearance_mode("Dark")  # 可选: "Light", "Dark", "System"
+        ctk.set_appearance_mode("Light")  # 可选: "Light", "Dark", "System"
         ctk.set_default_color_theme("blue")  # 可选: "blue", "green", "dark-blue"
 
     # --------------------
@@ -324,13 +324,14 @@ class InterviewTrainerGUI:
         if not self.current_question:
             messagebox.showinfo("提示", "当前没有题目")
             return
-        ans = self.current_question.get("answer") or "(无参考答案)"
+
         # 切换参考答案区域显示状态
         if self.answer_frame.winfo_ismapped():
             # 如果已经显示就隐藏
             self.answer_frame.pack_forget()
             self.show_answer_btn.configure(text="参考答案")
         else:  # 如果隐藏则显示并填充答案
+            ans = self.current_question.get("answer") or "(无参考答案)"
             self.ref_answer_textbox.configure(state="normal")
             self.ref_answer_textbox.delete("1.0", "end")
             self.ref_answer_textbox.insert("end", ans)
@@ -375,7 +376,7 @@ class InterviewTrainerGUI:
             self.question_textbox.insert("end", "(没有题目)")
             self.question_textbox.configure(state="disabled")
             self.question_textbox.configure(text="(无)")
-        meta_text = f"[{q.get('category', '未分类')}] [{q.get('difficulty', '中等')}] [掌握程度： {q.get('level', 0)}/5]"
+        meta_text = f"[{q.get('category', '未分类')}] - [{q.get('difficulty', '中等')}] - [掌握程度: {q.get('level', 0)}/5]"
         self.meta_label.configure(text=meta_text)
 
         self.question_textbox.configure(state="normal")
@@ -417,19 +418,21 @@ class InterviewTrainerGUI:
         """切换暂停/继续状态 """
         if self.timer_running:
             self.stop_timer()
-            self.pause_btn.configure(text="继续")
+            self.pause_btn.configure(text="继续", fg_color="#FF9800")  # 橙色暂停
             self.is_paused = True
             # 禁用提交按钮
             self.submit_btn.configure(state="disabled")
+            self.answer_textbox.configure(state='disabled')  # 禁用答题区
             # 显示提示信息
-            messagebox.showinfo("已暂停", "答题已暂停，请点击'继续'按钮恢复答题")
+            messagebox.showinfo("已暂停", "答题已暂停，请点击'继续'按钮恢复")
         else:
             self.start_timer()
-            self.pause_btn.configure(text="暂停")
+            self.pause_btn.configure(text="暂停", fg_color="#1F6AA5")  # 恢复原色
             self.is_paused = False
 
             # 启用提交按钮 - 确保在UI线程中执行
             self.app.after(100, lambda: self.submit_btn.configure(state="normal"))
+            self.answer_textbox.configure(state="normal")
 
     def submit_answer(self):
         """读取用户答案与评分，提交给 trainer，保存记录并跳转下一题"""
@@ -850,7 +853,7 @@ class InterviewTrainerGUI:
     def save_session_temp(self, username, password):
         """只保存用户名到 session.json（'记住我'）"""
         try:
-            with open("session.json", "w", encoding="utf-8") as f:
+            with open("data/session.json", "w", encoding="utf-8") as f:
                 json.dump({"username": username,
                            "password": password,
                            "saved_at": datetime.now().isoformat()},
@@ -860,8 +863,8 @@ class InterviewTrainerGUI:
 
     def load_saved_session(self):
         try:
-            if os.path.exists("session.json"):
-                with open("session.json", "r", encoding="utf-8") as f:
+            if os.path.exists("data/session.json"):
+                with open("data/session.json", "r", encoding="utf-8") as f:
                     data = json.load(f)
                 username = data.get("username")
                 password = data.get("password")
@@ -886,8 +889,8 @@ class InterviewTrainerGUI:
 
     def clear_saved_session(self):
         try:
-            if os.path.exists("session.json"):
-                os.remove("session.json")
+            if os.path.exists("data/session.json"):
+                os.remove("data/session.json")
             messagebox.showinfo("已清除", "本地 Session 已清除")
         except Exception:
             logger.exception("清除 session 失败")
