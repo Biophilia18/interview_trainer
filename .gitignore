@@ -9,3 +9,10 @@ dist
 build
 InterviewTrainer.spec
 prefs_2.json
+config
+dist
+static
+templates
+app.py
+cli.py
+build.py
