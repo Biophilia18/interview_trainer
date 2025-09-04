@@ -85,6 +85,11 @@ class InterviewTrainerGUI:
         self.trainer = None
         self.current_question = None
 
+        # 添加会话统计
+        self.session_start_time = None
+        self.session_question_count = 0
+        self.session_total_time = 0
+
         # 计时器相关
         self.timer_running = False
         self.elapsed_time = 0
@@ -342,6 +347,9 @@ class InterviewTrainerGUI:
     def load_next_question(self):
         """从trainer获取下一题并显示，无题则提示"""
         try:
+            # 如果是会话的第一题，记录开始时间
+            if self.session_question_count == 0:
+                self.session_start_time = datetime.now()
             # 停止当前问题的计时器
             self.reset_timer_state()
             self.stop_timer()
@@ -458,6 +466,9 @@ class InterviewTrainerGUI:
                 duration_seconds=self.elapsed_time
             )
             if record_id:
+                # 更新会话统计
+                self.session_question_count += 1
+                self.session_total_time += self.elapsed_time
                 logger.info(f"已提交记录 id={record_id}")
                 # messagebox.showinfo("提交成功", "答案提交成功，进入下一题。")
                 self.reset_timer_state()
@@ -613,13 +624,14 @@ class InterviewTrainerGUI:
             avg_rating = float(stats.get("avg_rating", 0) or 0)
             total_seconds = float(stats.get("total_seconds_all", 0) or 0)
 
+            h = int(total_seconds) // 3600
+            m = (int(total_seconds) % 3600) // 60
+            s = int(total_seconds) % 60
             # 文本拼接
             lines = []
             lines.append(f"总答题数：{total_reviews} 题")
             lines.append(f"平均评分：{avg_rating:.2f}")
-            h = int(total_seconds) // 3600
-            m = int(total_seconds) % 3600 // 60
-            s = int(total_seconds) % 60
+
             # lines.append(f"总计用时：{int(total_seconds)} 秒")
             lines.append(f"总计用时：{h} 时 {m} 分 {s} 秒")
             lines.append("\n按分类统计：")
@@ -628,7 +640,20 @@ class InterviewTrainerGUI:
                     lines.append(f"  {cat}: {data.get('count', 0)} 题")
                 else:
                     lines.append(f"  {cat}: {data} 题")
+            # 添加单次答题统计
+            lines.append("\n本次自测统计：")
+            if self.session_question_count > 0:
+                session_h = self.session_total_time // 3600
+                session_m = (self.session_total_time % 300) // 60
+                session_s = self.session_total_time % 60
 
+                lines.append(f"本次答题数量：{self.session_question_count} 题")
+                lines.append(f"本次答题总用时：{session_h} 时 {session_m} 分 {session_s} 秒")
+                if self.session_question_count > 0:
+                    avg_time_pq = self.session_total_time / self.session_question_count
+                    lines.append(f"本次答题每题平均用时：{avg_time_pq:.2f} 秒")
+            else:
+                lines.append(f"暂未开始答题")
             # 更新文本框
             self.stats_text.configure(state="normal")
             self.stats_text.delete("1.0", "end")
@@ -853,7 +878,11 @@ class InterviewTrainerGUI:
     def save_session_temp(self, username, password):
         """只保存用户名到 session.json（'记住我'）"""
         try:
-            with open("data/session.json", "w", encoding="utf-8") as f:
+            # 确保data目录存在
+            os.makedirs("data", exist_ok=True)
+            # 使用绝对路径确保打包后也能正确访问
+            session_path = os.path.join(os.getcwd(), "data", "session.json")
+            with open(session_path, "w", encoding="utf-8") as f:
                 json.dump({"username": username,
                            "password": password,
                            "saved_at": datetime.now().isoformat()},
@@ -863,8 +892,9 @@ class InterviewTrainerGUI:
 
     def load_saved_session(self):
         try:
-            if os.path.exists("data/session.json"):
-                with open("data/session.json", "r", encoding="utf-8") as f:
+            session_path = os.path.join(os.getcwd(), "data", "session.json")
+            if os.path.exists(session_path):
+                with open(session_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 username = data.get("username")
                 password = data.get("password")
@@ -932,6 +962,10 @@ class InterviewTrainerGUI:
         self.current_user = None
         # 停止计时
         self.stop_timer()
+        # 重置会话统计
+        self.session_question_count = 0
+        self.session_total_time = 0
+        self.session_start_time = None
         # 隐藏主界面，显示登录界面
         try:
             if self.main_frame:
